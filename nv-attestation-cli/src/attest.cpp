@@ -295,27 +295,31 @@ namespace nvattest {
 
         AttestOutput final_output(err);
 
-        nv_unique_ptr<nvat_str_t> serialized_claims;
-        nvat_str_t raw_serialized_claims;
-        err = nvat_claims_collection_serialize_json(*(claims.get()), &raw_serialized_claims);
-        if (err != NVAT_RC_OK) {
-            return AttestOutput(err);
-        }
-        serialized_claims.reset(&raw_serialized_claims);
+        if (*(claims.get()) != nullptr) {
+            nv_unique_ptr<nvat_str_t> serialized_claims;
+            nvat_str_t raw_serialized_claims = nullptr;
+            err = nvat_claims_collection_serialize_json(*(claims.get()), &raw_serialized_claims);
+            if (err != NVAT_RC_OK) {
+                return AttestOutput(err);
+            }
+            serialized_claims.reset(&raw_serialized_claims);
 
-        char * serialized_claims_data = nullptr;
-        err = nvat_str_get_data(*serialized_claims.get(), &serialized_claims_data);
-        if (err != NVAT_RC_OK) {
-            return AttestOutput(err);
+            char * serialized_claims_data = nullptr;
+            err = nvat_str_get_data(*serialized_claims.get(), &serialized_claims_data);
+            if (err != NVAT_RC_OK) {
+                return AttestOutput(err);
+            }
+            final_output.claims = std::string(serialized_claims_data);
         }
-        final_output.claims = std::string(serialized_claims_data);
 
-        char * detached_eat_data = nullptr;
-        err = nvat_str_get_data(*detached_eat.get(), &detached_eat_data);
-        if (err != NVAT_RC_OK) {
-            return AttestOutput(err);
+        if (*(detached_eat.get()) != nullptr) {
+            char * detached_eat_data = nullptr;
+            err = nvat_str_get_data(*detached_eat.get(), &detached_eat_data);
+            if (err != NVAT_RC_OK) {
+                return AttestOutput(err);
+            }
+            final_output.detached_eat = std::string(detached_eat_data);
         }
-        final_output.detached_eat = std::string(detached_eat_data);
 
         return final_output;
 
