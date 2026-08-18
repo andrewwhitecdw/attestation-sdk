@@ -26,6 +26,7 @@
 #include <array>
 #include <functional>
 #include <map>
+#include <algorithm>
 #include <sys/wait.h>
 
 //third party
@@ -847,4 +848,48 @@ TEST(ClaimsParity, SwitchLocalVsRemote) { // integration + unit
                 << "\nRemote:\n" << remote_claim.dump(2);
         }
     }
+}
+
+TEST_F(CliTest, AttestNonceNoValgrindLeak) {
+    RecordProperty("description", "Verify user-supplied nonce does not leak in attest");
+    if (g_cli_env->test_mode == "integration" && !g_cli_env->test_device_gpu) {
+        GTEST_SKIP() << "Skipping GPU Integration tests";
+    }
+
+    // Valgrind is required to detect the leak; CI may run the suite under other sanitizers instead.
+    if (std::system("which valgrind > /dev/null 2>&1") != 0) {
+        GTEST_SKIP() << "valgrind not available";
+    }
+
+    std::string nvattest_bin = g_cli_env->nvattest_bin;
+    std::string gpu_evidence_path = "../../../common-test-data/serialized_test_evidence/hopper_evidence.json";
+    std::string log_path = "/tmp/nvattest_nonce_leak_" + std::to_string(std::rand()) + ".log";
+
+    std::string cmd = "valgrind --leak-check=full --errors-for-leak-kinds=definite --log-file=" + log_path;
+    cmd += " " + nvattest_bin + " attest --device gpu --verifier local";
+    cmd += " --nonce 0xe97b23a1718095a0e9e35edca810768c70a6a5a389b705e753b197912bc11576";
+    cmd += " --gpu-evidence-source file --gpu-evidence-file " + gpu_evidence_path;
+    cmd += " --rim-url " + g_cli_env->rim_url;
+    cmd += " --ocsp-url " + g_cli_env->ocsp_url;
+
+    int exit_code = 0;
+    std::string output = exec_and_capture_output(cmd, exit_code);
+
+    std::ifstream log(log_path);
+    std::string log_text((std::istreambuf_iterator<char>(log)), std::istreambuf_iterator<char>());
+    log.close();
+    std::remove(log_path.c_str());
+
+    // The exit code may reflect attestation policy failures unrelated to the leak; only the leak summary matters.
+    std::size_t pos = log_text.find("definitely lost:");
+    if (pos == std::string::npos) {
+        GTEST_SKIP() << "Could not parse valgrind leak summary";
+    }
+    std::size_t end = log_text.find(" bytes", pos);
+    std::string leak_str = log_text.substr(pos + 16, end - (pos + 16));
+    leak_str.erase(std::remove(leak_str.begin(), leak_str.end(), ','), leak_str.end());
+    int leaked_bytes = std::atoi(leak_str.c_str());
+
+    EXPECT_EQ(leaked_bytes, 0) << "nvattest leaked memory when --nonce is supplied.\nCommand: "
+                               << redact_cmd(cmd) << "\nValgrind log:\n" << log_text;
 }

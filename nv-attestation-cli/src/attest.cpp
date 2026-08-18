@@ -279,14 +279,16 @@ namespace nvattest {
         nvat_claims_collection_t raw_claims = nullptr;
         nv_unique_ptr<nvat_str_t> detached_eat;
         nvat_str_t raw_detached_eat = nullptr;
-        nvat_nonce_t nonce = nullptr; 
+        nv_unique_ptr<nvat_nonce_t> nonce;
+        nvat_nonce_t raw_nonce = nullptr;
         if (!evidence_collection_options.nonce.empty()) {
-            err = nvat_nonce_from_hex(&nonce, evidence_collection_options.nonce.c_str());
+            err = nvat_nonce_from_hex(&raw_nonce, evidence_collection_options.nonce.c_str());
             if (err != NVAT_RC_OK) {
                 return AttestOutput(err);
             }
         }
-        err = nvat_attest_device(*(ctx.get()), nonce, &raw_detached_eat, &raw_claims);
+        nonce.reset(&raw_nonce);
+        err = nvat_attest_device(*(ctx.get()), *(nonce.get()), &raw_detached_eat, &raw_claims);
         if (err != NVAT_RC_OK && err != NVAT_RC_RP_POLICY_MISMATCH && err != NVAT_RC_OVERALL_RESULT_FALSE) {
             return AttestOutput(err);
         }
